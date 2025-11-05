@@ -3,15 +3,15 @@
 const request = require('supertest');
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
-const app = require('../../src/app');
-const Post = require('../../src/models/Post');
+const app = require('../../app');
+const BugPost = require('../../src/models/BugPost');
 const User = require('../../src/models/User');
 const { generateToken } = require('../../src/utils/auth');
 
 let mongoServer;
 let token;
 let userId;
-let postId;
+let bugId;
 
 // Setup in-memory MongoDB server before all tests
 beforeAll(async () => {
@@ -28,16 +28,18 @@ beforeAll(async () => {
   userId = user._id;
   token = generateToken(user);
 
-  // Create a test post
-  const post = await Post.create({
-    title: 'Test Post',
-    content: 'This is a test post content',
+  // Create a test post (Create initial bug)
+  const bug = await BugPost.create({
+    title: 'Test Bug Post',
+    description: 'This is a test bug post description',
+    status: 'open',
+    priority: 'high',
     author: userId,
-    category: mongoose.Types.ObjectId(),
+    category: new mongoose.Types.ObjectId().toString(),
     slug: 'test-post',
   });
-  postId = post._id;
-});
+  bugId = bug._id;
+}, 30000); // Increase timeout for MongoDB download
 
 // Clean up after all tests
 afterAll(async () => {
@@ -47,90 +49,93 @@ afterAll(async () => {
 
 // Clean up database between tests
 afterEach(async () => {
-  // Keep the test user and post, but clean up any other created data
+  // Keep the test user and bug post, but clean up any other created data (Clean up any bugs except initial test one)
   const collections = mongoose.connection.collections;
   for (const key in collections) {
     const collection = collections[key];
-    if (collection.collectionName !== 'users' && collection.collectionName !== 'posts') {
+    if (collection.collectionName !== 'users' && collection.collectionName !== 'bugs') {
       await collection.deleteMany({});
     }
   }
 });
 
-describe('POST /api/posts', () => {
-  it('should create a new post when authenticated', async () => {
-    const newPost = {
-      title: 'New Test Post',
-      content: 'This is a new test post content',
-      category: mongoose.Types.ObjectId().toString(),
+describe('POST /api/bugs', () => {
+  it('should create a new bug post when authenticated', async () => {
+    const newBug = {
+      title: 'New Test Bug Post',
+      description: 'This is a new test bug post description',
+      category: new mongoose.Types.ObjectId().toString(),
+      status: 'open',
+      priority: 'medium',
     };
 
     const res = await request(app)
-      .post('/api/posts')
+      .post('/api/bugs')
       .set('Authorization', `Bearer ${token}`)
-      .send(newPost);
+      .send(newBug);
 
     expect(res.status).toBe(201);
     expect(res.body).toHaveProperty('_id');
-    expect(res.body.title).toBe(newPost.title);
-    expect(res.body.content).toBe(newPost.content);
+    expect(res.body.title).toBe(newBug.title);
+    expect(res.body.description).toBe(newBug.description);
     expect(res.body.author).toBe(userId.toString());
   });
 
   it('should return 401 if not authenticated', async () => {
-    const newPost = {
-      title: 'Unauthorized Post',
-      content: 'This should not be created',
-      category: mongoose.Types.ObjectId().toString(),
+    const newBug = {
+      title: 'Unauthorized Bug Post',
+      description: 'This should not be created',
+      category: new mongoose.Types.ObjectId().toString(),
     };
 
     const res = await request(app)
-      .post('/api/posts')
-      .send(newPost);
+      .post('/api/bugs')
+      .send(newBug);
 
     expect(res.status).toBe(401);
   });
 
   it('should return 400 if validation fails', async () => {
-    const invalidPost = {
-      // Missing title
-      content: 'This post is missing a title',
-      category: mongoose.Types.ObjectId().toString(),
+    const invalidBugPost = {
+      // Missing bug title
+      description: 'This bug post is missing a title',
+      category: new mongoose.Types.ObjectId().toString(),
     };
 
     const res = await request(app)
-      .post('/api/posts')
+      .post('/api/bugs')
       .set('Authorization', `Bearer ${token}`)
-      .send(invalidPost);
+      .send(invalidBugPost);
 
     expect(res.status).toBe(400);
-    expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('message');
   });
 });
 
-describe('GET /api/posts', () => {
-  it('should return all posts', async () => {
-    const res = await request(app).get('/api/posts');
+
+describe('GET /api/bugs', () => {
+  it('should return all bug posts', async () => {
+    const res = await request(app).get('/api/bugs');
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBeTruthy();
     expect(res.body.length).toBeGreaterThan(0);
   });
 
-  it('should filter posts by category', async () => {
-    const categoryId = mongoose.Types.ObjectId().toString();
+  it('should filter bug posts by category', async () => {
+    const categoryId = new mongoose.Types.ObjectId().toString();
     
-    // Create a post with specific category
-    await Post.create({
-      title: 'Filtered Post',
-      content: 'This post should be filtered by category',
+    // Create a bug post with specific category
+    await BugPost.create({
+      title: 'Filtered Bug Post',
+      description: 'This bug post should be filtered by category',
       author: userId,
       category: categoryId,
-      slug: 'filtered-post',
+      slug: 'filtered-bug-post',
     });
 
     const res = await request(app)
-      .get(`/api/posts?category=${categoryId}`);
+      .get(`/api/bugs?category=${categoryId}`);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBeTruthy();
@@ -138,25 +143,31 @@ describe('GET /api/posts', () => {
     expect(res.body[0].category).toBe(categoryId);
   });
 
+  it('should filter bugs by priority', async () => {
+    const res = await request(app).get('/api/bugs?priority=high');
+    expect(res.status).toBe(200);
+    expect(res.body[0].priority).toBe('high');
+  });
+
   it('should paginate results', async () => {
-    // Create multiple posts
-    const posts = [];
+    // Create multiple bug posts
+    const bugs = [];
     for (let i = 0; i < 15; i++) {
-      posts.push({
-        title: `Pagination Post ${i}`,
-        content: `Content for pagination test ${i}`,
+      bugs.push({
+        title: `Pagination Bug Post ${i}`,
+        description: `Content for pagination test ${i}`,
         author: userId,
-        category: mongoose.Types.ObjectId(),
-        slug: `pagination-post-${i}`,
+        category: new mongoose.Types.ObjectId().toString(),
+        slug: `pagination-bug-post-${i}`,
       });
     }
-    await Post.insertMany(posts);
+    await BugPost.insertMany(bugs);
 
     const page1 = await request(app)
-      .get('/api/posts?page=1&limit=10');
+      .get('/api/bugs?page=1&limit=10');
     
     const page2 = await request(app)
-      .get('/api/posts?page=2&limit=10');
+      .get('/api/bugs?page=2&limit=10');
 
     expect(page1.status).toBe(200);
     expect(page2.status).toBe(200);
@@ -166,49 +177,51 @@ describe('GET /api/posts', () => {
   });
 });
 
-describe('GET /api/posts/:id', () => {
-  it('should return a post by ID', async () => {
-    const res = await request(app)
-      .get(`/api/posts/${postId}`);
+
+describe('GET /api/bugs/:id', () => {
+  it('should return a bug post by ID', async () => {
+    const res = await request(app).get(`/api/bugs/${bugId}`);
 
     expect(res.status).toBe(200);
-    expect(res.body._id).toBe(postId.toString());
-    expect(res.body.title).toBe('Test Post');
+    expect(res.body._id).toBe(bugId.toString());
+    expect(res.body.title).toBe('Test Bug Post');
   });
 
-  it('should return 404 for non-existent post', async () => {
-    const nonExistentId = mongoose.Types.ObjectId();
-    const res = await request(app)
-      .get(`/api/posts/${nonExistentId}`);
+  it('should return 404 for non-existent bug post', async () => {
+    const nonExistentId = new mongoose.Types.ObjectId();
+    const res = await request(app).get(`/api/bugs/${nonExistentId}`);
 
     expect(res.status).toBe(404);
   });
 });
 
-describe('PUT /api/posts/:id', () => {
-  it('should update a post when authenticated as author', async () => {
+
+describe('PUT /api/bugs/:id', () => {
+  it('should update a bug post when authenticated as author', async () => {
     const updates = {
       title: 'Updated Test Post',
-      content: 'This content has been updated',
+      description: 'This bug content has been updated',
+      status: 'resolved',
+      priority: 'low'
     };
 
     const res = await request(app)
-      .put(`/api/posts/${postId}`)
+      .put(`/api/bugs/${bugId}`)
       .set('Authorization', `Bearer ${token}`)
       .send(updates);
 
     expect(res.status).toBe(200);
     expect(res.body.title).toBe(updates.title);
-    expect(res.body.content).toBe(updates.content);
+    expect(res.body.status).toBe('resolved');
   });
 
   it('should return 401 if not authenticated', async () => {
     const updates = {
-      title: 'Unauthorized Update',
+      title: 'Unauthorized Bug Update',
     };
 
     const res = await request(app)
-      .put(`/api/posts/${postId}`)
+      .put(`/api/bugs/${bugId}`)
       .send(updates);
 
     expect(res.status).toBe(401);
@@ -228,7 +241,7 @@ describe('PUT /api/posts/:id', () => {
     };
 
     const res = await request(app)
-      .put(`/api/posts/${postId}`)
+      .put(`/api/bugs/${bugId}`)
       .set('Authorization', `Bearer ${anotherToken}`)
       .send(updates);
 
@@ -236,22 +249,23 @@ describe('PUT /api/posts/:id', () => {
   });
 });
 
-describe('DELETE /api/posts/:id', () => {
-  it('should delete a post when authenticated as author', async () => {
+
+describe('DELETE /api/bugs/:id', () => {
+  it('should delete a bug post when authenticated as author', async () => {
     const res = await request(app)
-      .delete(`/api/posts/${postId}`)
+      .delete(`/api/bugs/${bugId}`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
     
-    // Verify post is deleted
-    const deletedPost = await Post.findById(postId);
-    expect(deletedPost).toBeNull();
+    // Verify bug post is deleted
+    const deletedBug = await BugPost.findById(bugId);
+    expect(deletedBug).toBeNull();
   });
 
   it('should return 401 if not authenticated', async () => {
     const res = await request(app)
-      .delete(`/api/posts/${postId}`);
+      .delete(`/api/bugs/${bugId}`);
 
     expect(res.status).toBe(401);
   });
