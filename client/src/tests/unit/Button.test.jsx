@@ -12,7 +12,7 @@ describe('Button Component', () => {
     const button = screen.getByRole('button', { name: /click me/i });
     
     expect(button).toBeInTheDocument();
-    expect(button).toHaveClass('btn-primary');
+    expect(button).toHaveClass('bg-blue-500');
     expect(button).not.toBeDisabled();
   });
 
@@ -20,30 +20,30 @@ describe('Button Component', () => {
   it('renders with different variants', () => {
     const { rerender } = render(<Button variant="primary">Primary</Button>);
     let button = screen.getByRole('button', { name: /primary/i });
-    expect(button).toHaveClass('btn-primary');
+    expect(button).toHaveClass('bg-blue-500');
     
     rerender(<Button variant="secondary">Secondary</Button>);
     button = screen.getByRole('button', { name: /secondary/i });
-    expect(button).toHaveClass('btn-secondary');
+    expect(button).toHaveClass('bg-gray-500');
     
     rerender(<Button variant="danger">Danger</Button>);
     button = screen.getByRole('button', { name: /danger/i });
-    expect(button).toHaveClass('btn-danger');
+    expect(button).toHaveClass('bg-red-500');
   });
 
   // Test different sizes
   it('renders with different sizes', () => {
     const { rerender } = render(<Button size="sm">Small</Button>);
     let button = screen.getByRole('button', { name: /small/i });
-    expect(button).toHaveClass('btn-sm');
+    expect(button).toHaveClass('px-3');
     
     rerender(<Button size="md">Medium</Button>);
     button = screen.getByRole('button', { name: /medium/i });
-    expect(button).toHaveClass('btn-md');
+    expect(button).toHaveClass('px-4');
     
     rerender(<Button size="lg">Large</Button>);
     button = screen.getByRole('button', { name: /large/i });
-    expect(button).toHaveClass('btn-lg');
+    expect(button).toHaveClass('px-5');
   });
 
   // Test disabled state
@@ -52,7 +52,7 @@ describe('Button Component', () => {
     const button = screen.getByRole('button', { name: /disabled/i });
     
     expect(button).toBeDisabled();
-    expect(button).toHaveClass('btn-disabled');
+    expect(button).toHaveClass('cursor-not-allowed');
   });
 
   // Test click handler
@@ -90,6 +90,6 @@ describe('Button Component', () => {
     
     expect(button).toHaveClass('custom-class');
     // Should also have the default classes
-    expect(button).toHaveClass('btn-primary');
+    expect(button).toHaveClass('bg-blue-500');
   });
 }); 
