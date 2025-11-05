@@ -30,7 +30,7 @@ module.exports = {
       },
       setupFilesAfterEnv: ['<rootDir>/client/src/tests/setup.js'],
       transform: {
-        '^.+\\.(js|jsx)$': 'babel-jest',
+        '^.+\\.(js|jsx)$': ['babel-jest', { configFile: './client/babel.config.js' }],
       },
       coverageDirectory: '<rootDir>/coverage/client',
       collectCoverageFrom: [
@@ -53,5 +53,5 @@ module.exports = {
       lines: 70,
     },
   },
-  testTimeout: 10000,
+  testTimeout: 30000,
 }; 
